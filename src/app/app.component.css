@@ -1,0 +1,12 @@
+.card {
+  max-width: 200px;
+  margin-bottom: 20px;
+}
+
+header h1 {
+  text-shadow: 2px 2px #fff;
+}
+
+.mat-form-field {
+  width: 90%;
+}
