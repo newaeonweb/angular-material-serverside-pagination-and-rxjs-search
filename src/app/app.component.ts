@@ -3,13 +3,12 @@ import {
   OnInit,
   OnDestroy,
   ViewChild,
-  ChangeDetectorRef,
   AfterViewInit
 } from "@angular/core";
-import { BehaviorSubject, Observable, Subject } from "rxjs";
+import { BehaviorSubject, Observable, of} from "rxjs";
 
-import { HttpClient } from "@angular/common/http";
-import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
+import { HttpClient, HttpParams } from "@angular/common/http";
+import { catchError, debounceTime, distinctUntilChanged, switchMap } from "rxjs/operators";
 import { DialogComponent } from "./dialog/dialog.component";
 import { FormBuilder, FormControl, FormGroup } from "@angular/forms";
 import { MatPaginator } from "@angular/material/paginator";
@@ -40,13 +39,13 @@ export interface Character {
 }
 
 export interface HttpRequest {
-  info: {
+  info?: {
     count: number;
     pages: number;
     next: string;
     prev: string;
   };
-  results: Character[];
+  results?: Character[];
 }
 
 @Component({
@@ -59,7 +58,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   characters$: Observable<any>;
   characterDataSource: MatTableDataSource<Character[]>;
   characterDatabase = new HttpDatabase(this.httpClient);
-  searchTerm$ = new BehaviorSubject('');
+  searchTerm$ = new BehaviorSubject<string>("");
+  resultsEmpty$ = new BehaviorSubject<boolean>(false);
   status = "";
   resultsLength = 0;
 
@@ -69,29 +69,19 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   dialogRef: MatDialogRef<DialogComponent>;
 
   constructor(
-    private changeDetectorRef: ChangeDetectorRef,
     private httpClient: HttpClient,
     public dialog: MatDialog,
     private fb: FormBuilder
   ) {
-    this.characterDatabase
-      .search(this.searchTerm$)
-      .subscribe((response: any) => {
-        this.resultsLength = response.info.count;
-        this.characterDataSource = new MatTableDataSource(response.results);
-        this.characterDataSource.paginator = this.paginator;
-        this.characters$ = this.characterDataSource.connect();
-      });
-
-    this.filterFormGroup = this.fb.group({});
+    
   }
   ngAfterViewInit(): void {
     this.paginator.page.subscribe(() => {
       this.characterDatabase
         .getCharacters("", "", this.paginator.pageIndex)
-        .subscribe((response: any) => {
-          this.characterDataSource = new MatTableDataSource(response.results);
-          this.resultsLength = response.info.count;
+        .subscribe((response: HttpRequest) => {
+          this.characterDataSource = new MatTableDataSource(response.results as any[]);
+          this.resultsLength = response.info?.count;
           // this.characterDataSource.paginator = this.paginator;
           this.characters$ = this.characterDataSource.connect();
         });
@@ -99,19 +89,30 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.characterDatabase.getCharacters().subscribe((response: any) => {
-      this.characterDataSource = new MatTableDataSource(response.results);
-      this.resultsLength = response.info.count;
-      this.characterDataSource.paginator = this.paginator;
-      this.characters$ = this.characterDataSource.connect();
-    });
-    this.changeDetectorRef.detectChanges();
+    this.filterFormGroup = this.fb.group({});
+    this.loadData();
   }
 
   ngOnDestroy() {
     if (this.characterDataSource) {
       this.characterDataSource.disconnect();
     }
+  }
+
+  loadData() {
+    this.characterDatabase
+      .search(this.searchTerm$)
+      .subscribe((response: HttpRequest) => {
+        if (!response.info || !response.results) {
+          this.resultsEmpty$.next(true)
+          return
+        }
+        this.resultsEmpty$.next(false)
+        this.resultsLength = response.info?.count;
+        this.characterDataSource = new MatTableDataSource(response.results as any[]);
+        this.characterDataSource.paginator = this.paginator;
+        this.characters$ = this.characterDataSource.connect();
+      });
   }
 
   openDialog(char) {
@@ -122,7 +123,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     });
 
     this.dialogRef.afterClosed().subscribe((res: string) => {
-      console.log(res)
       if (!res) {
         return;
       }
@@ -134,10 +134,10 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   applyFilter() {
     const filterValue = this.status;
     this.characterDataSource.filter = filterValue.trim().toLowerCase();
-    // this.characterDataSource.paginator = this.paginator;
-    // if (this.characterDataSource.paginator) {
-    //   this.characterDataSource.paginator.firstPage();
-    // }
+    this.characterDataSource.paginator = this.paginator;
+    if (this.characterDataSource.paginator) {
+      this.characterDataSource.paginator.firstPage();
+    }
   }
 
   setStatusColor(status: string) {
@@ -157,9 +157,14 @@ export class HttpDatabase {
     return terms.pipe(
       debounceTime(400),
       distinctUntilChanged(),
-      switchMap(term => this.getCharacters(term))
-    )
-
+      switchMap(term =>
+        this.getCharacters(term).pipe(
+          catchError(() => {
+            return of({ info: null, results: null });
+          })
+        )
+      )
+    );
   }
 
   getCharacters(
@@ -167,9 +172,12 @@ export class HttpDatabase {
     status: string = "",
     page: number = 0
   ): Observable<HttpRequest> {
-    const href = "https://rickandmortyapi.com/api/character";
-    const requestUrl = `${href}?name=${name}&status=${status}&page=${page + 1}`;
-
-    return this._httpClient.get<HttpRequest>(requestUrl);
+    const apiUrl = "https://rickandmortyapi.com/api/character";
+    return this._httpClient.get<HttpRequest>(apiUrl, {
+      params: new HttpParams()
+        .set('name', name)
+        .set('status', status)
+        .set('page', (page +1 ).toString())
+    });
   }
 }

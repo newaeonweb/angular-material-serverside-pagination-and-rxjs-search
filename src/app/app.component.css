@@ -10,3 +10,7 @@ header h1 {
 .mat-form-field {
   width: 90%;
 }
+
+.no-character-found {
+  color: red;
+}
