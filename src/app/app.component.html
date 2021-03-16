@@ -28,9 +28,6 @@
     </mat-form-field>
   </div>
 
-  <div class="spinner-container" *ngIf="!(characters$ | async).length">
-        <mat-spinner></mat-spinner>
-    </div>
   <div class="flex-container">
     <mat-card class="flex-item card mat-elevation-z2" *ngFor="let char of characters$ | async">
       <mat-card-header>
