@@ -9,9 +9,12 @@
       <mat-label>Search characters by name</mat-label>
       <input matInput #search (keyup)="searchTerm$.next(search.value)" [formControl]="searchField">
       <button mat-button *ngIf="search.value !== ''" matSuffix mat-icon-button aria-label="Clear" (click)="search.value='';searchTerm$.next(search.value)">
-    <mat-icon>close</mat-icon>
-  </button>
+        <mat-icon>close</mat-icon>
+      </button>
     </mat-form-field>
+      <small class="no-character-found" *ngIf="resultsEmpty$ | async">
+        No character found for this search
+      </small>
   </div>
 
   <div class="flex-container">
@@ -25,6 +28,9 @@
     </mat-form-field>
   </div>
 
+  <div class="spinner-container" *ngIf="!(characters$ | async).length">
+        <mat-spinner></mat-spinner>
+    </div>
   <div class="flex-container">
     <mat-card class="flex-item card mat-elevation-z2" *ngFor="let char of characters$ | async">
       <mat-card-header>
